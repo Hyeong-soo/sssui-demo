@@ -152,7 +152,7 @@ export default function DemoApp() {
       const indices = Array.from(selected.values()).sort((a,b) => a-b);
       const chosen = indices.map(i => (shares as any[])[i]);
       if (chosen.length < t) throw new Error(`Select at least ${t} shares.`);
-      const recovered = combineShares(chosen, t);
+      const recovered = combineShares(curve, chosen, t);
       setCombineHex(toHex(recovered));
       setCombineText(bytesToText(recovered));
     } catch (e) {
