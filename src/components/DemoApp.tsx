@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { split_ec, combine_ec } from "sssui_wasm";
 import { hexToUint8Array, strToFixed32Bytes, toFixed32FromHex, toHex, stringify, bytesToText } from "../utils/bytes";
+import { splitByCurve, combineShares, Curve } from "../utils/sss";
 import useWasmInit from "../hooks/useWasmInit";
 
 type InputMode = "hex" | "text";
-type Curve = "secp256k1" | "secp256r1" | "ed25519";
 
 export default function DemoApp() {
   const { initialized, error } = useWasmInit();
@@ -29,6 +28,14 @@ export default function DemoApp() {
     [initialized, n, t, secretInput]
   );
 
+  const randomHex32 = () => {
+    const arr = new Uint8Array(32);
+    (globalThis.crypto || window.crypto).getRandomValues(arr);
+    // Constrain MSB by modulo 64 as requested
+    arr[0] = arr[0] % 16;
+    return toHex(arr);
+  };
+
   const handleSplit = () => {
     setErr(null);
     setShares(null);
@@ -42,9 +49,7 @@ export default function DemoApp() {
 
       if (secretBytes.length !== 32) throw new Error("Secret must be exactly 32 bytes (padded/truncated). ");
 
-      const ks_node_hashes: number[][] = Array.from({ length: n }, (_, i) => strToFixed32Bytes(`node${i + 1}`));
-
-      const out = split_ec(secretBytes, ks_node_hashes, t);
+      const out = splitByCurve(curve, secretBytes, n, t);
       const list = toSharesArray(out);
       setShares(list);
 
@@ -147,7 +152,7 @@ export default function DemoApp() {
       const indices = Array.from(selected.values()).sort((a,b) => a-b);
       const chosen = indices.map(i => (shares as any[])[i]);
       if (chosen.length < t) throw new Error(`Select at least ${t} shares.`);
-      const recovered = combine_ec(chosen, t);
+      const recovered = combineShares(chosen, t);
       setCombineHex(toHex(recovered));
       setCombineText(bytesToText(recovered));
     } catch (e) {
@@ -188,11 +193,11 @@ export default function DemoApp() {
           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="radio" name="curve" value="secp256k1" checked={curve === "secp256k1"} onChange={() => setCurve("secp256k1")} /> secp256k1
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, opacity: 0.6 }} title="Coming soon">
-            <input type="radio" name="curve" value="secp256r1" checked={curve === "secp256r1"} onChange={() => setCurve("secp256r1")} disabled /> secp256r1 (soon)
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="radio" name="curve" value="secp256r1" checked={curve === "secp256r1"} onChange={() => setCurve("secp256r1")} /> secp256r1
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, opacity: 0.6 }} title="Coming soon">
-            <input type="radio" name="curve" value="ed25519" checked={curve === "ed25519"} onChange={() => setCurve("ed25519")} disabled /> ed25519 (soon)
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="radio" name="curve" value="ed25519" checked={curve === "ed25519"} onChange={() => setCurve("ed25519")} /> ed25519
           </label>
         </div>
 
@@ -214,6 +219,15 @@ export default function DemoApp() {
             rows={3}
             style={{ width: "100%", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas", borderRadius: 8, padding: 10, border: "1px solid #ddd" }}
           />
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => { setInputMode("hex"); setSecretInput(randomHex32()); }}
+              style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ddd", background: "#f9fafb", cursor: "pointer" }}
+            >
+              Random 32-byte HEX
+            </button>
+          </div>
           <div style={{ color: "#777", fontSize: 12, marginTop: 4 }}>
             {inputMode === "hex" ? "If not exactly 32 bytes, it will be padded/truncated." : "Text is UTF-8 and padded/truncated to 32 bytes."}
           </div>
