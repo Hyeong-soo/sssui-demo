@@ -96,6 +96,8 @@ export default function DemoApp() {
     if (u instanceof Uint8Array) return u;
     if (isByteArrayLike(u)) return new Uint8Array(u as number[]);
     if (u && typeof u === "object") {
+      const obj = u as Record<string, unknown>;
+      if ("x" in obj && "y" in obj) return null;
       for (const key of ["share", "value", "y", "data"]) {
         const v = (u as any)[key];
         if (v instanceof Uint8Array) return v;
