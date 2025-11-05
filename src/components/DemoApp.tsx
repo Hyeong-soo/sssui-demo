@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { hexToUint8Array, strToFixed32Bytes, toFixed32FromHex, toHex, stringify, bytesToText } from "../utils/bytes";
-import { splitByCurve, combineShares, Curve } from "../utils/sss";
+import { splitByCurve, combineShares, Curve, isScalarWithinCurveRange } from "../utils/sss";
 import useWasmInit from "../hooks/useWasmInit";
 
 type InputMode = "hex" | "text";
@@ -30,9 +30,13 @@ export default function DemoApp() {
 
   const randomHex32 = () => {
     const arr = new Uint8Array(32);
-    (globalThis.crypto || window.crypto).getRandomValues(arr);
-    // Constrain MSB by modulo 64 as requested
-    arr[0] = arr[0] % 16;
+    const cryptoObj = (globalThis.crypto || (typeof window !== "undefined" ? window.crypto : undefined));
+    if (!cryptoObj?.getRandomValues) {
+      throw new Error("Secure random generator is not available.");
+    }
+    do {
+      cryptoObj.getRandomValues(arr);
+    } while (curve === "ed25519" && !isScalarWithinCurveRange("ed25519", Array.from(arr)));
     return toHex(arr);
   };
 
@@ -48,6 +52,9 @@ export default function DemoApp() {
         : strToFixed32Bytes(secretInput);
 
       if (secretBytes.length !== 32) throw new Error("Secret must be exactly 32 bytes (padded/truncated). ");
+      if (curve === "ed25519" && !isScalarWithinCurveRange(curve, secretBytes)) {
+        throw new Error("Secret must be less than the ed25519 curve order.");
+      }
 
       const out = splitByCurve(curve, secretBytes, n, t);
       const list = toSharesArray(out);
@@ -110,11 +117,14 @@ export default function DemoApp() {
   function formatShareForDisplay(u: any, mode: InputMode): string {
     const bytes = bytesFromUnknown(u);
     if (bytes) {
-      if (mode === "hex") return toHex(bytes);
+      const asBigEndian = Array.from(bytes).reverse();
+      if (mode === "hex") {
+        return toHex(asBigEndian);
+      }
       try {
         return new TextDecoder().decode(bytes);
       } catch {
-        return toHex(bytes);
+        return toHex(asBigEndian);
       }
     }
     if (Array.isArray(u)) return `[${u.map(x => formatShareForDisplay(x, mode)).join(", ")}]`;
